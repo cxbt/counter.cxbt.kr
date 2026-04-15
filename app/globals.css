@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap");
+
 :root {
   color-scheme: dark;
   --base-bg: #121212;
@@ -11,6 +13,8 @@
   --chip-base: rgba(255, 255, 255, 0.08);
   --chip-active: rgba(66, 207, 130, 0.18);
   --chip-done: rgba(244, 178, 94, 0.18);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --line-soft: rgba(255, 255, 255, 0.1);
   --shadow: rgba(0, 0, 0, 0.3);
 }
 
@@ -22,6 +26,8 @@ body[data-mode="light"] {
   --text-primary: #111827;
   --text-secondary: rgba(17, 24, 39, 0.64);
   --chip-base: rgba(17, 24, 39, 0.06);
+  --line-strong: rgba(17, 24, 39, 0.22);
+  --line-soft: rgba(17, 24, 39, 0.16);
   --shadow: rgba(15, 23, 42, 0.12);
 }
 
@@ -43,30 +49,22 @@ body {
 }
 
 .timer-app {
+  --vertical-gap: 10px;
   position: relative;
   min-height: 100vh;
+  padding-block: var(--vertical-gap);
   overflow: hidden;
   background: var(--base-bg);
-}
-
-.progress-layer {
-  position: absolute;
-  inset: 0;
-  background: var(--fill-main);
-  box-shadow: inset -24px 0 40px rgba(255, 255, 255, 0.08);
-  transform-origin: left center;
-  transition: transform 140ms linear;
-  will-change: transform;
 }
 
 .timer-shell {
   position: relative;
   z-index: 1;
-  min-height: 100vh;
+  min-height: calc(100vh - var(--vertical-gap) - var(--vertical-gap));
   display: grid;
   grid-template-rows: 1fr auto;
   gap: 24px;
-  padding: 28px 28px 96px;
+  padding: 28px;
 }
 
 .timer-stage {
@@ -81,7 +79,7 @@ body {
 .timer-state {
   margin: 0;
   min-height: 1.4em;
-  font-size: 0.95rem;
+  font-size: 3rem;
   font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -93,10 +91,24 @@ body {
 
 .timer-time {
   margin: 0;
-  font-size: clamp(4.8rem, 14vw, 11rem);
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  font-family: "Noto Sans Mono";
+  font-size: clamp(
+    calc(4.8rem * var(--timer-scale, 1)),
+    calc(14vw * var(--timer-scale, 1)),
+    calc(11rem * var(--timer-scale, 1))
+  );
   line-height: 0.92;
   font-weight: 800;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-kerning: none;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
   text-shadow: 0 10px 28px var(--shadow);
 }
 
@@ -109,6 +121,18 @@ body {
 
 .timer-actions {
   justify-content: center;
+  margin-top: 10px;
+}
+
+.timer-action-button {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+}
+
+.timer-playback-icon {
+  font-size: 16px;
+  line-height: 1;
 }
 
 .milestone-strip {
@@ -161,12 +185,28 @@ body {
 }
 
 .milestone-track {
+  --track-progress: 1;
   position: relative;
-  height: 42px;
+  height: var(--track-height, 64px);
+  margin-top: 22px;
+  margin-bottom: 22px;
   border-radius: 8px;
   background: var(--base-bg-soft);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  overflow: visible;
+}
+
+.milestone-track::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--fill-main), var(--fill-warn));
+  opacity: 0.36;
+  border-radius: inherit;
+  transform: scaleX(var(--track-progress));
+  transform-origin: right center;
+  transition: transform 140ms linear;
+  will-change: transform;
 }
 
 .milestone-track::before {
@@ -178,6 +218,7 @@ body {
   height: 1px;
   background: rgba(255, 255, 255, 0.12);
   transform: translateY(-50%);
+  z-index: 1;
 }
 
 .milestone-marker {
@@ -186,13 +227,14 @@ body {
   bottom: 0;
   width: 0;
   transform: translateX(-50%);
+  z-index: 2;
 }
 
 .milestone-marker::before {
   content: "";
   position: absolute;
-  top: 8px;
-  bottom: 8px;
+  top: 10px;
+  bottom: 10px;
   left: 50%;
   width: 2px;
   background: rgba(255, 255, 255, 0.42);
@@ -203,14 +245,26 @@ body {
   content: attr(data-label);
   position: absolute;
   left: 50%;
-  bottom: 8px;
+  top: -18px;
   transform: translateX(-50%);
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--base-panel-strong);
-  color: var(--text-primary);
-  font-size: 0.78rem;
-  font-weight: 700;
+  padding: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.milestone-marker-name {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.1;
   white-space: nowrap;
 }
 
@@ -277,10 +331,75 @@ body {
   margin-bottom: 0;
 }
 
-.milestone-form-list {
+.settings-row {
   display: grid;
   gap: 12px;
+  margin-bottom: 12px;
+}
+
+.settings-row-2-1 {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.settings-row-counter {
+  margin-bottom: 0;
+}
+
+.settings-row-1-2 {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+
+.settings-row-1-1 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-section-title {
+  margin: 4px 0 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.settings-section-title-divider {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-strong);
+}
+
+.settings-item {
+  margin-bottom: 0;
+}
+
+.settings-item-checkbox {
+  display: flex;
+  align-items: flex-end;
+}
+
+.settings-item-checkbox .ant-form-item-control {
+  width: 100%;
+}
+
+.settings-item-checkbox .ant-form-item-control-input {
+  min-height: 40px;
+  align-items: center;
+}
+
+.milestone-form-list {
+  display: grid;
+  gap: 0;
   margin-bottom: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--base-bg-soft);
+  overflow: hidden;
+}
+
+.milestone-form-empty {
+  margin: 0;
+  padding: 10px 12px;
+  text-align: center;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--line-soft);
 }
 
 .milestone-form-header {
@@ -289,29 +408,58 @@ body {
   justify-content: space-between;
   gap: 12px;
   font-weight: 700;
+  padding: 10px 12px;
+  background: var(--base-panel-strong);
+  border-bottom: 1px solid var(--line-strong);
 }
 
 .milestone-form-row {
+  position: relative;
   display: grid;
-  grid-template-columns: 136px minmax(0, 1fr) 40px;
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1.2fr) 40px;
   gap: 8px;
-  align-items: start;
+  align-items: center;
+  padding: 4px 12px;
 }
 
-.milestone-form-time,
-.milestone-form-label {
+.milestone-form-row + .milestone-form-row {
+  border-top: 1px solid var(--line-soft);
+}
+
+.milestone-form-list .milestone-form-row .ant-form-item.milestone-form-time,
+.milestone-form-list .milestone-form-row .ant-form-item.milestone-form-label {
   margin-bottom: 0;
+}
+
+.milestone-form-time .ant-picker {
+  width: 100%;
+}
+
+.milestone-form-row > .ant-btn {
+  justify-self: end;
+  align-self: start;
 }
 
 .settings-note {
   margin: 12px 0 0;
   color: var(--text-secondary);
   font-size: 0.92rem;
+  text-align: center;
+  opacity: 1;
+  transition: opacity 500ms ease;
+}
+
+.settings-note.is-fading {
+  opacity: 0;
 }
 
 @media (max-width: 640px) {
+  .timer-app {
+    --vertical-gap: 8px;
+  }
+
   .timer-shell {
-    padding: 20px 16px 88px;
+    padding: 16px;
     gap: 18px;
   }
 
@@ -319,8 +467,19 @@ body {
     gap: 14px;
   }
 
+  .timer-action-button {
+    width: 52px;
+    height: 52px;
+  }
+
   .timer-meta {
     font-size: 0.95rem;
+  }
+
+  .settings-row-2-1,
+  .settings-row-1-2,
+  .settings-row-1-1 {
+    grid-template-columns: 1fr;
   }
 
   .milestone-spotlight {
@@ -328,15 +487,23 @@ body {
   }
 
   .milestone-track {
-    height: 38px;
+    height: 54px;
   }
 
   .milestone-marker::after {
+    top: -16px;
     font-size: 0.72rem;
-    padding: 2px 7px;
+    padding: 0;
+  }
+
+  .milestone-marker-name {
+    top: calc(100% + 7px);
+    font-size: 0.7rem;
   }
 
   .milestone-form-row {
     grid-template-columns: 1fr;
+    align-items: start;
+    padding: 10px;
   }
 }

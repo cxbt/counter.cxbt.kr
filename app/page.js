@@ -8,18 +8,28 @@ import {
   ColorPicker,
   ConfigProvider,
   Drawer,
-  FloatButton,
   Form,
   Input,
+  InputNumber,
   Select,
   Space,
   TimePicker,
   theme as antdTheme,
 } from "antd";
-import { DeleteOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
+import {
+  CaretRightFilled,
+  CloseOutlined,
+  DeleteOutlined,
+  PauseOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SettingOutlined,
+} from "@ant-design/icons";
 
 const STORAGE_KEY = "custom-timer-settings-v2";
 const PULSE_MS = 2200;
+const SETTINGS_NOTE_FADE_DELAY_MS = 2200;
+const SETTINGS_NOTE_HIDE_DELAY_MS = 2800;
 
 const DEFAULT_SETTINGS = {
   duration: { hours: 0, minutes: 30, seconds: 0 },
@@ -31,6 +41,9 @@ const DEFAULT_SETTINGS = {
   barColor: "#42cf82",
   mode: "dark",
   showMilliseconds: false,
+  showMilestoneTrack: true,
+  timerScale: 100,
+  trackHeight: 64,
 };
 
 function clamp(value, min, max) {
@@ -75,20 +88,31 @@ function dayjsToSeconds(value) {
   return value.hour() * 3600 + value.minute() * 60 + value.second();
 }
 
-function formatTime(totalMs, showMilliseconds) {
+function getTimeDisplayParts(totalMs) {
   const safeMs = Math.max(0, totalMs);
   const totalSeconds = Math.floor(safeMs / 1000);
   const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const minutesRemainder = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   const centiseconds = Math.floor((safeMs % 1000) / 10);
 
-  const base =
-    hours > 0
-      ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
-      : `${String(Math.floor(totalSeconds / 60)).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return {
+    hasHours: hours > 0,
+    hours: String(hours).padStart(2, "0"),
+    minutes: String(hours > 0 ? minutesRemainder : Math.floor(totalSeconds / 60)).padStart(2, "0"),
+    seconds: String(seconds).padStart(2, "0"),
+    centiseconds: String(centiseconds).padStart(2, "0"),
+  };
+}
 
-  return showMilliseconds ? `${base}.${String(centiseconds).padStart(2, "0")}` : base;
+function formatTime(totalMs, showMilliseconds) {
+  const parts = getTimeDisplayParts(totalMs);
+  const base =
+    parts.hasHours
+      ? `${parts.hours}:${parts.minutes}:${parts.seconds}`
+      : `${parts.minutes}:${parts.seconds}`;
+
+  return showMilliseconds ? `${base}.${parts.centiseconds}` : base;
 }
 
 function formatDuration(seconds) {
@@ -141,6 +165,11 @@ function sanitizeSettings(candidate) {
   const barColor = normalizeHex(candidate?.barColor || DEFAULT_SETTINGS.barColor);
   const mode = candidate?.mode === "light" ? "light" : "dark";
   const showMilliseconds = Boolean(candidate?.showMilliseconds);
+  const showMilestoneTrack = candidate?.showMilestoneTrack !== false;
+  const timerScaleNumber = Number(candidate?.timerScale);
+  const trackHeightNumber = Number(candidate?.trackHeight);
+  const timerScale = Number.isFinite(timerScaleNumber) ? Math.round(timerScaleNumber) : DEFAULT_SETTINGS.timerScale;
+  const trackHeight = Number.isFinite(trackHeightNumber) ? Math.round(trackHeightNumber) : DEFAULT_SETTINGS.trackHeight;
 
   const milestones = Array.isArray(candidate?.milestones)
     ? candidate.milestones
@@ -148,7 +177,7 @@ function sanitizeSettings(candidate) {
           timeSeconds: Math.floor(Number(item?.timeSeconds) || 0),
           label: String(item?.label || "").trim(),
         }))
-        .filter((item) => item.timeSeconds > 0 && item.timeSeconds < totalDurationSeconds && item.label)
+        .filter((item) => item.timeSeconds > 0 && item.timeSeconds <= totalDurationSeconds)
         .sort((left, right) => left.timeSeconds - right.timeSeconds)
     : DEFAULT_SETTINGS.milestones;
 
@@ -158,6 +187,9 @@ function sanitizeSettings(candidate) {
     barColor,
     mode,
     showMilliseconds,
+    showMilestoneTrack,
+    timerScale,
+    trackHeight,
   };
 }
 
@@ -165,6 +197,9 @@ function settingsToFormValues(settings) {
   return {
     durationTime: secondsToDayjs(durationPartsToSeconds(settings.duration)),
     showMilliseconds: settings.showMilliseconds,
+    showMilestoneTrack: settings.showMilestoneTrack,
+    timerScale: settings.timerScale,
+    trackHeight: settings.trackHeight,
     barColor: settings.barColor,
     mode: settings.mode,
     milestones: settings.milestones.map((item) => ({
@@ -183,7 +218,7 @@ function formValuesToSettings(values) {
           timeSeconds: dayjsToSeconds(item?.time),
           label: String(item?.label || "").trim(),
         }))
-        .filter((item) => item.timeSeconds > 0 && item.timeSeconds < totalDurationSeconds && item.label)
+        .filter((item) => item.timeSeconds > 0 && item.timeSeconds <= totalDurationSeconds)
         .sort((left, right) => left.timeSeconds - right.timeSeconds)
     : [];
 
@@ -196,6 +231,9 @@ function formValuesToSettings(values) {
         : values.barColor,
     mode: values.mode,
     showMilliseconds: values.showMilliseconds,
+    showMilestoneTrack: values.showMilestoneTrack,
+    timerScale: values.timerScale,
+    trackHeight: values.trackHeight,
   });
 }
 
@@ -207,11 +245,34 @@ export default function Page() {
   const [remainingMs, setRemainingMs] = useState(durationPartsToSeconds(DEFAULT_SETTINGS.duration) * 1000);
   const [isRunning, setIsRunning] = useState(false);
   const [pulseActive, setPulseActive] = useState(false);
-  const [settingsNote, setSettingsNote] = useState("적용 시 저장");
+  const [settingsNote, setSettingsNote] = useState("");
+  const [isSettingsNoteVisible, setIsSettingsNoteVisible] = useState(false);
+  const [isSettingsNoteFading, setIsSettingsNoteFading] = useState(false);
   const frameRef = useRef(null);
   const startedAtRef = useRef(null);
   const pulseTimeoutRef = useRef(null);
+  const settingsNoteFadeTimeoutRef = useRef(null);
+  const settingsNoteHideTimeoutRef = useRef(null);
   const prevReachedIndexRef = useRef(-1);
+
+  function clearSettingsNoteTimers() {
+    window.clearTimeout(settingsNoteFadeTimeoutRef.current);
+    window.clearTimeout(settingsNoteHideTimeoutRef.current);
+  }
+
+  function showSettingsNote(message) {
+    clearSettingsNoteTimers();
+    setSettingsNote(message);
+    setIsSettingsNoteVisible(true);
+    setIsSettingsNoteFading(false);
+    settingsNoteFadeTimeoutRef.current = window.setTimeout(() => {
+      setIsSettingsNoteFading(true);
+    }, SETTINGS_NOTE_FADE_DELAY_MS);
+    settingsNoteHideTimeoutRef.current = window.setTimeout(() => {
+      setIsSettingsNoteVisible(false);
+      setIsSettingsNoteFading(false);
+    }, SETTINGS_NOTE_HIDE_DELAY_MS);
+  }
 
   const totalDurationSeconds = useMemo(() => durationPartsToSeconds(settings.duration), [settings.duration]);
   const totalDurationMs = totalDurationSeconds * 1000;
@@ -233,8 +294,8 @@ export default function Page() {
     [elapsedMs, settings.milestones]
   );
 
-  const currentMilestone = reachedMilestoneIndex >= 0 ? settings.milestones[reachedMilestoneIndex] : null;
   const nextMilestone = nextMilestoneIndex >= 0 ? settings.milestones[nextMilestoneIndex] : null;
+  const milestoneTitle = nextMilestone?.label?.trim() || "";
 
   const barPalette = useMemo(() => {
     const main = normalizeHex(settings.barColor);
@@ -255,12 +316,17 @@ export default function Page() {
       const parsed = raw ? sanitizeSettings(JSON.parse(raw)) : DEFAULT_SETTINGS;
       setSettings(parsed);
       setRemainingMs(durationPartsToSeconds(parsed.duration) * 1000);
-      form.setFieldsValue(settingsToFormValues(parsed));
     } catch {
-      form.setFieldsValue(settingsToFormValues(DEFAULT_SETTINGS));
-      setSettingsNote("저장된 설정을 읽지 못함");
+      showSettingsNote("저장된 설정을 읽지 못함");
     }
-  }, [form]);
+  }, []);
+
+  useEffect(() => {
+    if (!drawerOpen) {
+      return;
+    }
+    form.setFieldsValue(settingsToFormValues(settings));
+  }, [drawerOpen, form]);
 
   useEffect(() => {
     if (!mounted) {
@@ -342,46 +408,23 @@ export default function Page() {
       if (pulseTimeoutRef.current) {
         window.clearTimeout(pulseTimeoutRef.current);
       }
+      clearSettingsNoteTimers();
     };
   }, []);
 
-  const stateLabel = useMemo(() => {
-    if (remainingMs <= 0) {
-      return "완료";
-    }
-    if (isRunning) {
-      return "진행 중";
-    }
-    if (remainingMs < totalDurationMs) {
-      return "일시정지";
-    }
-    return "";
-  }, [isRunning, remainingMs, totalDurationMs]);
-
-  const metaLabel = useMemo(() => {
-    const base = `총 ${formatDuration(totalDurationSeconds)}`;
-    if (remainingMs <= 0) {
-      return `${base} · 완료`;
-    }
-    if (nextMilestone) {
-      return `${base} · 다음 ${nextMilestone.label}`;
-    }
-    if (currentMilestone) {
-      return `${base} · ${currentMilestone.label}`;
-    }
-    return base;
-  }, [currentMilestone, nextMilestone, remainingMs, totalDurationSeconds]);
+  const formattedTime = formatTime(remainingMs, settings.showMilliseconds);
+  const isFinished = remainingMs <= 0;
+  const timeDisplay = isFinished ? "😄👍" : formattedTime;
 
   function handleToggleTimer() {
+    if (isFinished) {
+      return;
+    }
+
     if (isRunning) {
       setIsRunning(false);
       startedAtRef.current = null;
       return;
-    }
-
-    if (remainingMs <= 0) {
-      setRemainingMs(totalDurationMs);
-      prevReachedIndexRef.current = -1;
     }
 
     setIsRunning(true);
@@ -399,9 +442,8 @@ export default function Page() {
     const nextSettings = formValuesToSettings(values);
     setSettings(nextSettings);
     form.setFieldsValue(settingsToFormValues(nextSettings));
-    setSettingsNote("설정 저장됨");
+    showSettingsNote("저장되었습니다!");
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSettings));
-    setDrawerOpen(false);
   }
 
   const algorithm = settings.mode === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm;
@@ -418,141 +460,177 @@ export default function Page() {
       }}
     >
       <div className="timer-app">
-        <div
-          className="progress-layer"
-          style={{ transform: `scaleX(${Math.max(0, Math.min(1, progress))})` }}
-        />
-
         <main className="timer-shell">
           <section className="timer-stage" aria-label="타이머">
-            <p className={`timer-state${stateLabel ? "" : " is-empty"}`}>{stateLabel || "\u00a0"}</p>
-            <h1 className="timer-time">{formatTime(remainingMs, settings.showMilliseconds)}</h1>
-            <p className="timer-meta">{metaLabel}</p>
-            <Space size={10} wrap className="timer-actions">
-              <Button type="primary" size="large" onClick={handleToggleTimer}>
-                {isRunning ? "일시정지" : remainingMs <= 0 ? "다시 시작" : "시작"}
-              </Button>
-              <Button size="large" onClick={handleReset}>
-                리셋
-              </Button>
-            </Space>
-          </section>
-
-          {settings.milestones.length > 0 ? (
-            <section className="milestone-strip" aria-label="Milestone">
-              <div className={`milestone-spotlight${pulseActive ? " is-alert" : ""}${!currentMilestone && nextMilestone ? " is-next" : ""}`}>
-                <p className="milestone-spotlight-state">
-                  {currentMilestone ? "현재 milestone" : nextMilestone ? "다음 milestone" : ""}
-                </p>
-                <p className="milestone-spotlight-value">
-                  {currentMilestone ? currentMilestone.label : nextMilestone ? nextMilestone.label : ""}
-                </p>
-                <p className="milestone-spotlight-time">
-                  {currentMilestone
-                    ? formatMilestoneTime(currentMilestone.timeSeconds)
-                    : nextMilestone
-                      ? formatMilestoneTime(nextMilestone.timeSeconds)
-                      : ""}
-                </p>
-              </div>
-
-              <div className="milestone-track">
+            <h1
+              className="timer-time"
+              style={{ "--timer-scale": `${settings.timerScale / 100}` }}
+              aria-label={timeDisplay}
+            >
+              {timeDisplay}
+            </h1>
+            {milestoneTitle ? <p className="timer-state">{milestoneTitle}</p> : null}
+            {settings.showMilestoneTrack ? (
+              <div
+                className="milestone-track"
+                style={{
+                  "--track-progress": Math.max(0, Math.min(1, progress)),
+                  "--track-height": `${settings.trackHeight}px`,
+                }}
+              >
                 {settings.milestones.map((milestone, index) => {
                   const isReached = index <= reachedMilestoneIndex;
                   const isNext = index === nextMilestoneIndex;
+                  const markerTime = formatMilestoneTime(milestone.timeSeconds);
+                  const markerName = milestone.label?.trim() || "마일스톤";
                   return (
                     <span
                       key={`${milestone.timeSeconds}-${milestone.label}`}
                       className={`milestone-marker${isReached ? " is-reached" : ""}${isNext ? " is-next" : ""}`}
                       style={{ left: `${(milestone.timeSeconds / totalDurationSeconds) * 100}%` }}
-                      data-label={formatMilestoneTime(milestone.timeSeconds)}
-                    />
-                  );
-                })}
-              </div>
-
-              <div className="milestone-list">
-                {settings.milestones.map((milestone, index) => {
-                  const isReached = index <= reachedMilestoneIndex;
-                  const isNext = index === nextMilestoneIndex;
-                  const isCurrent = index === reachedMilestoneIndex;
-                  return (
-                    <div
-                      key={`${milestone.timeSeconds}-${milestone.label}-chip`}
-                      className={`milestone-chip${isReached ? " is-reached" : ""}${isNext ? " is-next" : ""}${isCurrent ? " is-current" : ""}`}
+                      data-label={markerTime}
                     >
-                      <span className="milestone-chip-label">{milestone.label}</span>
-                      <span className="milestone-chip-time">{formatMilestoneTime(milestone.timeSeconds)}</span>
-                    </div>
+                      <span className="milestone-marker-name">{markerName}</span>
+                    </span>
                   );
                 })}
               </div>
-            </section>
-          ) : null}
+            ) : null}
+            <Space size={10} wrap className="timer-actions">
+              <Button
+                type="primary"
+                size="large"
+                shape="circle"
+                icon={isRunning ? <PauseOutlined className="timer-playback-icon" /> : <CaretRightFilled className="timer-playback-icon" />}
+                aria-label={isRunning ? "일시정지" : "시작"}
+                className="timer-action-button"
+                disabled={isFinished}
+                onClick={handleToggleTimer}
+              />
+              <Button
+                size="large"
+                shape="circle"
+                icon={<ReloadOutlined />}
+                aria-label="리셋"
+                className="timer-action-button"
+                onClick={handleReset}
+              />
+              <Button
+                size="large"
+                shape="circle"
+                icon={<SettingOutlined />}
+                aria-label="설정"
+                className="timer-action-button"
+                onClick={() => setDrawerOpen(true)}
+              />
+            </Space>
+          </section>
         </main>
-
-        <FloatButton icon={<SettingOutlined />} type="default" onClick={() => setDrawerOpen(true)} tooltip="설정" />
 
         <Drawer
           title="설정"
+          closable={false}
+          extra={
+            <Button type="text" aria-label="닫기" onClick={() => {
+              setDrawerOpen(false);
+            }} icon={<CloseOutlined />} />
+          }
           placement="right"
           open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          width={380}
+          onClose={() => {
+            setDrawerOpen(false);
+          }}
+          size={380}
           destroyOnHidden={false}
         >
           <Form form={form} layout="vertical" onFinish={handleApply} initialValues={settingsToFormValues(settings)}>
-            <Form.Item label="총 시간" name="durationTime">
-              <TimePicker format="HH:mm:ss" allowClear={false} style={{ width: "100%" }} />
-            </Form.Item>
+            <p className="settings-section-title">카운터 설정</p>
+            <div className="settings-row settings-row-2-1 settings-row-counter">
+              <Form.Item label="총 시간" name="durationTime" className="settings-item">
+                <TimePicker format="HH:mm:ss" allowClear={false} style={{ width: "100%" }} />
+              </Form.Item>
 
-            <Form.Item name="showMilliseconds" valuePropName="checked">
-              <Checkbox>ms 표시</Checkbox>
-            </Form.Item>
-
-            <Form.Item label="Bar 색상" name="barColor">
-              <ColorPicker format="hex" showText />
-            </Form.Item>
-
-            <Form.Item label="모드" name="mode">
-              <Select
-                options={[
-                  { value: "dark", label: "Dark" },
-                  { value: "light", label: "Light" },
-                ]}
-              />
-            </Form.Item>
+              <Form.Item name="showMilliseconds" valuePropName="checked" className="settings-item settings-item-checkbox">
+                <Checkbox>ms 표시</Checkbox>
+              </Form.Item>
+            </div>
 
             <Form.List name="milestones">
               {(fields, { add, remove }) => (
                 <div className="milestone-form-list">
                   <div className="milestone-form-header">
-                    <span>Milestone</span>
-                    <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ time: secondsToDayjs(5 * 60), label: "" })}>
+                    <span>마일스톤</span>
+                    <Button
+                      type="dashed"
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        const formDurationSeconds = dayjsToSeconds(form.getFieldValue("durationTime"));
+                        const baseDurationSeconds = Math.max(1, formDurationSeconds || totalDurationSeconds);
+                        const nextTimeSeconds = Math.min(5 * 60, baseDurationSeconds);
+                        add({ time: secondsToDayjs(nextTimeSeconds), label: "" });
+                      }}
+                    >
                       추가
                     </Button>
                   </div>
 
-                  {fields.map((field) => (
-                    <div key={field.key} className="milestone-form-row">
-                      <Form.Item {...field} name={[field.name, "time"]} className="milestone-form-time">
-                        <TimePicker format="HH:mm:ss" allowClear={false} />
-                      </Form.Item>
-                      <Form.Item {...field} name={[field.name, "label"]} className="milestone-form-label">
-                        <Input placeholder="목표 이름" />
-                      </Form.Item>
-                      <Button danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
-                    </div>
-                  ))}
+                  {fields.length === 0 ? <p className="milestone-form-empty">마일스톤이 없습니다</p> : null}
+
+                  {fields.map((field) => {
+                    const { key, ...restField } = field;
+                    return (
+                      <div key={key} className="milestone-form-row">
+                        <Form.Item {...restField} name={[field.name, "time"]} className="milestone-form-time">
+                          <TimePicker format="HH:mm:ss" allowClear={false} />
+                        </Form.Item>
+                        <Form.Item {...restField} name={[field.name, "label"]} className="milestone-form-label">
+                          <Input placeholder="목표 이름" />
+                        </Form.Item>
+                        <Button danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </Form.List>
 
+            <Form.Item name="showMilestoneTrack" valuePropName="checked" className="settings-item settings-item-checkbox">
+              <Checkbox>카운터 바 표시</Checkbox>
+            </Form.Item>
+
+            <p className="settings-section-title settings-section-title-divider">스타일 설정</p>
+            <div className="settings-row settings-row-1-1">
+              <Form.Item label="타이머 글자 크기(%)" name="timerScale" className="settings-item">
+                <InputNumber step={5} style={{ width: "100%" }} />
+              </Form.Item>
+
+              <Form.Item label="마일스톤 바 높이(px)" name="trackHeight" className="settings-item">
+                <InputNumber step={2} style={{ width: "100%" }} />
+              </Form.Item>
+            </div>
+
+            <div className="settings-row settings-row-1-2">
+              <Form.Item label="Bar 색상" name="barColor" className="settings-item">
+                <ColorPicker format="hex" showText />
+              </Form.Item>
+
+              <Form.Item label="모드" name="mode" className="settings-item">
+                <Select
+                  options={[
+                    { value: "dark", label: "Dark" },
+                    { value: "light", label: "Light" },
+                  ]}
+                />
+              </Form.Item>
+            </div>
+
             <Button type="primary" htmlType="submit" block size="large">
-              적용
+              저장
             </Button>
 
-            <p className="settings-note">{settingsNote}</p>
+            {isSettingsNoteVisible ? (
+              <p className={`settings-note${isSettingsNoteFading ? " is-fading" : ""}`}>{settingsNote}</p>
+            ) : null}
           </Form>
         </Drawer>
       </div>

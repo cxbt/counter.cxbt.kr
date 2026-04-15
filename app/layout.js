@@ -3,7 +3,7 @@ import "antd/dist/reset.css";
 import "./globals.css";
 
 export const metadata = {
-  title: "Custom Timer",
+  title: "카운터",
   description: "Customizable milestone timer",
 };
 
