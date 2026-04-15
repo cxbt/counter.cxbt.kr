@@ -1,0 +1,342 @@
+:root {
+  color-scheme: dark;
+  --base-bg: #121212;
+  --base-bg-soft: rgba(255, 255, 255, 0.02);
+  --base-panel-strong: rgba(18, 18, 18, 0.84);
+  --text-primary: #f7f2e8;
+  --text-secondary: rgba(247, 242, 232, 0.72);
+  --fill-main: #42cf82;
+  --fill-warn: #afdfa5;
+  --fill-end: #e85d5d;
+  --chip-base: rgba(255, 255, 255, 0.08);
+  --chip-active: rgba(66, 207, 130, 0.18);
+  --chip-done: rgba(244, 178, 94, 0.18);
+  --shadow: rgba(0, 0, 0, 0.3);
+}
+
+body[data-mode="light"] {
+  color-scheme: light;
+  --base-bg: #eef2f4;
+  --base-bg-soft: rgba(255, 255, 255, 0.36);
+  --base-panel-strong: rgba(255, 255, 255, 0.9);
+  --text-primary: #111827;
+  --text-secondary: rgba(17, 24, 39, 0.64);
+  --chip-base: rgba(17, 24, 39, 0.06);
+  --shadow: rgba(15, 23, 42, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: Inter, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  background: var(--base-bg);
+  color: var(--text-primary);
+}
+
+body {
+  min-height: 100vh;
+}
+
+.timer-app {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--base-bg);
+}
+
+.progress-layer {
+  position: absolute;
+  inset: 0;
+  background: var(--fill-main);
+  box-shadow: inset -24px 0 40px rgba(255, 255, 255, 0.08);
+  transform-origin: left center;
+  transition: transform 140ms linear;
+  will-change: transform;
+}
+
+.timer-shell {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 24px;
+  padding: 28px 28px 96px;
+}
+
+.timer-stage {
+  align-self: center;
+  justify-self: center;
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  text-align: center;
+}
+
+.timer-state {
+  margin: 0;
+  min-height: 1.4em;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.timer-state.is-empty {
+  opacity: 0;
+}
+
+.timer-time {
+  margin: 0;
+  font-size: clamp(4.8rem, 14vw, 11rem);
+  line-height: 0.92;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 10px 28px var(--shadow);
+}
+
+.timer-meta {
+  margin: 0;
+  min-height: 1.4em;
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+
+.timer-actions {
+  justify-content: center;
+}
+
+.milestone-strip {
+  width: min(1080px, 100%);
+  justify-self: center;
+  display: grid;
+  gap: 14px;
+}
+
+.milestone-spotlight {
+  display: grid;
+  justify-items: center;
+  align-items: center;
+  gap: 4px;
+  min-height: 132px;
+}
+
+.milestone-spotlight-state,
+.milestone-spotlight-time {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.milestone-spotlight-state {
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.milestone-spotlight-value {
+  margin: 0;
+  font-size: clamp(2.8rem, 6vw, 6rem);
+  line-height: 0.92;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.milestone-spotlight.is-next .milestone-spotlight-value {
+  opacity: 0.62;
+}
+
+.milestone-spotlight.is-alert .milestone-spotlight-value {
+  animation: milestone-pulse 600ms ease 3;
+}
+
+@keyframes milestone-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+.milestone-track {
+  position: relative;
+  height: 42px;
+  border-radius: 8px;
+  background: var(--base-bg-soft);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.milestone-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-50%);
+}
+
+.milestone-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  transform: translateX(-50%);
+}
+
+.milestone-marker::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.42);
+  transform: translateX(-50%);
+}
+
+.milestone-marker::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--base-panel-strong);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.milestone-marker.is-reached::before {
+  background: var(--fill-warn);
+}
+
+.milestone-marker.is-next::before {
+  background: var(--fill-main);
+}
+
+.milestone-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.milestone-chip {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--chip-base);
+  color: var(--text-secondary);
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.milestone-chip.is-reached {
+  background: var(--chip-done);
+  color: var(--text-primary);
+}
+
+.milestone-chip.is-next {
+  background: var(--chip-active);
+  color: var(--text-primary);
+}
+
+.milestone-chip.is-current {
+  transform: scale(1.12);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.milestone-chip-label {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.milestone-chip-time {
+  font-size: 0.84rem;
+}
+
+.duration-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.duration-item {
+  margin-bottom: 0;
+}
+
+.milestone-form-list {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.milestone-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 700;
+}
+
+.milestone-form-row {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr) 40px;
+  gap: 8px;
+  align-items: start;
+}
+
+.milestone-form-time,
+.milestone-form-label {
+  margin-bottom: 0;
+}
+
+.settings-note {
+  margin: 12px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+@media (max-width: 640px) {
+  .timer-shell {
+    padding: 20px 16px 88px;
+    gap: 18px;
+  }
+
+  .timer-stage {
+    gap: 14px;
+  }
+
+  .timer-meta {
+    font-size: 0.95rem;
+  }
+
+  .milestone-spotlight {
+    min-height: 104px;
+  }
+
+  .milestone-track {
+    height: 38px;
+  }
+
+  .milestone-marker::after {
+    font-size: 0.72rem;
+    padding: 2px 7px;
+  }
+
+  .milestone-form-row {
+    grid-template-columns: 1fr;
+  }
+}

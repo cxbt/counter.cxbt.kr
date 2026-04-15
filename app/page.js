@@ -1,0 +1,561 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import dayjs from "dayjs";
+import {
+  Button,
+  Checkbox,
+  ColorPicker,
+  ConfigProvider,
+  Drawer,
+  FloatButton,
+  Form,
+  Input,
+  Select,
+  Space,
+  TimePicker,
+  theme as antdTheme,
+} from "antd";
+import { DeleteOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
+
+const STORAGE_KEY = "custom-timer-settings-v2";
+const PULSE_MS = 2200;
+
+const DEFAULT_SETTINGS = {
+  duration: { hours: 0, minutes: 30, seconds: 0 },
+  milestones: [
+    { timeSeconds: 300, label: "5분" },
+    { timeSeconds: 600, label: "10분" },
+    { timeSeconds: 900, label: "15분" },
+  ],
+  barColor: "#42cf82",
+  mode: "dark",
+  showMilliseconds: false,
+};
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeHex(hex) {
+  return /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : DEFAULT_SETTINGS.barColor;
+}
+
+function durationPartsToSeconds(duration) {
+  const hours = clamp(Number(duration.hours) || 0, 0, 23);
+  const minutes = clamp(Number(duration.minutes) || 0, 0, 59);
+  const seconds = clamp(Number(duration.seconds) || 0, 0, 59);
+  const total = hours * 3600 + minutes * 60 + seconds;
+  return total > 0 ? total : 30 * 60;
+}
+
+function secondsToDurationParts(totalSeconds) {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  return {
+    hours: Math.floor(safe / 3600),
+    minutes: Math.floor((safe % 3600) / 60),
+    seconds: safe % 60,
+  };
+}
+
+function secondsToDayjs(totalSeconds) {
+  const parts = secondsToDurationParts(totalSeconds);
+  return dayjs()
+    .hour(parts.hours)
+    .minute(parts.minutes)
+    .second(parts.seconds)
+    .millisecond(0);
+}
+
+function dayjsToSeconds(value) {
+  if (!value || typeof value.hour !== "function") {
+    return 0;
+  }
+
+  return value.hour() * 3600 + value.minute() * 60 + value.second();
+}
+
+function formatTime(totalMs, showMilliseconds) {
+  const safeMs = Math.max(0, totalMs);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const centiseconds = Math.floor((safeMs % 1000) / 10);
+
+  const base =
+    hours > 0
+      ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+      : `${String(Math.floor(totalSeconds / 60)).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+  return showMilliseconds ? `${base}.${String(centiseconds).padStart(2, "0")}` : base;
+}
+
+function formatDuration(seconds) {
+  const parts = secondsToDurationParts(seconds);
+  if (parts.hours > 0) {
+    return `${String(parts.hours).padStart(2, "0")}:${String(parts.minutes).padStart(2, "0")}:${String(parts.seconds).padStart(2, "0")}`;
+  }
+
+  return `${String(parts.minutes).padStart(2, "0")}:${String(parts.seconds).padStart(2, "0")}`;
+}
+
+function formatMilestoneTime(seconds) {
+  const parts = secondsToDurationParts(seconds);
+  return `${String(parts.hours).padStart(2, "0")}:${String(parts.minutes).padStart(2, "0")}:${String(parts.seconds).padStart(2, "0")}`;
+}
+
+function hexToRgb(hex) {
+  const normalized = normalizeHex(hex).slice(1);
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b]
+    .map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function mixHex(baseHex, targetHex, weight) {
+  const base = hexToRgb(baseHex);
+  const target = hexToRgb(targetHex);
+  return rgbToHex({
+    r: base.r + (target.r - base.r) * weight,
+    g: base.g + (target.g - base.g) * weight,
+    b: base.b + (target.b - base.b) * weight,
+  });
+}
+
+function rgbaFromHex(hex, alpha) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function sanitizeSettings(candidate) {
+  const duration = candidate?.duration || DEFAULT_SETTINGS.duration;
+  const totalDurationSeconds = durationPartsToSeconds(duration);
+  const barColor = normalizeHex(candidate?.barColor || DEFAULT_SETTINGS.barColor);
+  const mode = candidate?.mode === "light" ? "light" : "dark";
+  const showMilliseconds = Boolean(candidate?.showMilliseconds);
+
+  const milestones = Array.isArray(candidate?.milestones)
+    ? candidate.milestones
+        .map((item) => ({
+          timeSeconds: Math.floor(Number(item?.timeSeconds) || 0),
+          label: String(item?.label || "").trim(),
+        }))
+        .filter((item) => item.timeSeconds > 0 && item.timeSeconds < totalDurationSeconds && item.label)
+        .sort((left, right) => left.timeSeconds - right.timeSeconds)
+    : DEFAULT_SETTINGS.milestones;
+
+  return {
+    duration: secondsToDurationParts(totalDurationSeconds),
+    milestones,
+    barColor,
+    mode,
+    showMilliseconds,
+  };
+}
+
+function settingsToFormValues(settings) {
+  return {
+    durationTime: secondsToDayjs(durationPartsToSeconds(settings.duration)),
+    showMilliseconds: settings.showMilliseconds,
+    barColor: settings.barColor,
+    mode: settings.mode,
+    milestones: settings.milestones.map((item) => ({
+      time: secondsToDayjs(item.timeSeconds),
+      label: item.label,
+    })),
+  };
+}
+
+function formValuesToSettings(values) {
+  const totalDurationSeconds = Math.max(1, dayjsToSeconds(values.durationTime));
+
+  const milestones = Array.isArray(values.milestones)
+    ? values.milestones
+        .map((item) => ({
+          timeSeconds: dayjsToSeconds(item?.time),
+          label: String(item?.label || "").trim(),
+        }))
+        .filter((item) => item.timeSeconds > 0 && item.timeSeconds < totalDurationSeconds && item.label)
+        .sort((left, right) => left.timeSeconds - right.timeSeconds)
+    : [];
+
+  return sanitizeSettings({
+    duration: secondsToDurationParts(totalDurationSeconds),
+    milestones,
+    barColor:
+      typeof values.barColor?.toHexString === "function"
+        ? values.barColor.toHexString()
+        : values.barColor,
+    mode: values.mode,
+    showMilliseconds: values.showMilliseconds,
+  });
+}
+
+export default function Page() {
+  const [form] = Form.useForm();
+  const [mounted, setMounted] = useState(false);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [remainingMs, setRemainingMs] = useState(durationPartsToSeconds(DEFAULT_SETTINGS.duration) * 1000);
+  const [isRunning, setIsRunning] = useState(false);
+  const [pulseActive, setPulseActive] = useState(false);
+  const [settingsNote, setSettingsNote] = useState("적용 시 저장");
+  const frameRef = useRef(null);
+  const startedAtRef = useRef(null);
+  const pulseTimeoutRef = useRef(null);
+  const prevReachedIndexRef = useRef(-1);
+
+  const totalDurationSeconds = useMemo(() => durationPartsToSeconds(settings.duration), [settings.duration]);
+  const totalDurationMs = totalDurationSeconds * 1000;
+  const elapsedMs = Math.max(0, totalDurationMs - remainingMs);
+  const progress = totalDurationMs > 0 ? remainingMs / totalDurationMs : 1;
+
+  const reachedMilestoneIndex = useMemo(() => {
+    let index = -1;
+    settings.milestones.forEach((milestone, milestoneIndex) => {
+      if (elapsedMs >= milestone.timeSeconds * 1000) {
+        index = milestoneIndex;
+      }
+    });
+    return index;
+  }, [elapsedMs, settings.milestones]);
+
+  const nextMilestoneIndex = useMemo(
+    () => settings.milestones.findIndex((milestone) => elapsedMs < milestone.timeSeconds * 1000),
+    [elapsedMs, settings.milestones]
+  );
+
+  const currentMilestone = reachedMilestoneIndex >= 0 ? settings.milestones[reachedMilestoneIndex] : null;
+  const nextMilestone = nextMilestoneIndex >= 0 ? settings.milestones[nextMilestoneIndex] : null;
+
+  const barPalette = useMemo(() => {
+    const main = normalizeHex(settings.barColor);
+    return {
+      main,
+      warn: mixHex(main, "#ffcc66", 0.45),
+      end: mixHex(main, "#ff5e5b", 0.65),
+      chipActive: rgbaFromHex(main, settings.mode === "dark" ? 0.18 : 0.24),
+      chipDone: rgbaFromHex(mixHex(main, "#ffcc66", 0.45), settings.mode === "dark" ? 0.2 : 0.18),
+    };
+  }, [settings.barColor, settings.mode]);
+
+  useEffect(() => {
+    setMounted(true);
+
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const parsed = raw ? sanitizeSettings(JSON.parse(raw)) : DEFAULT_SETTINGS;
+      setSettings(parsed);
+      setRemainingMs(durationPartsToSeconds(parsed.duration) * 1000);
+      form.setFieldsValue(settingsToFormValues(parsed));
+    } catch {
+      form.setFieldsValue(settingsToFormValues(DEFAULT_SETTINGS));
+      setSettingsNote("저장된 설정을 읽지 못함");
+    }
+  }, [form]);
+
+  useEffect(() => {
+    if (!mounted) {
+      return;
+    }
+
+    document.body.dataset.mode = settings.mode;
+    document.documentElement.style.setProperty("--fill-main", barPalette.main);
+    document.documentElement.style.setProperty("--fill-warn", barPalette.warn);
+    document.documentElement.style.setProperty("--fill-end", barPalette.end);
+    document.documentElement.style.setProperty("--chip-active", barPalette.chipActive);
+    document.documentElement.style.setProperty("--chip-done", barPalette.chipDone);
+  }, [barPalette, mounted, settings.mode]);
+
+  useEffect(() => {
+    setRemainingMs(totalDurationMs);
+    setIsRunning(false);
+    startedAtRef.current = null;
+    prevReachedIndexRef.current = -1;
+    setPulseActive(false);
+  }, [totalDurationMs]);
+
+  useEffect(() => {
+    if (!isRunning) {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      return undefined;
+    }
+
+    const tick = (now) => {
+      if (startedAtRef.current === null) {
+        startedAtRef.current = now - (totalDurationMs - remainingMs);
+      }
+
+      const elapsed = now - startedAtRef.current;
+      const nextRemaining = Math.max(0, totalDurationMs - elapsed);
+      setRemainingMs(nextRemaining);
+
+      if (nextRemaining > 0) {
+        frameRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      setIsRunning(false);
+      startedAtRef.current = null;
+    };
+
+    frameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [isRunning, remainingMs, totalDurationMs]);
+
+  useEffect(() => {
+    if (!isRunning || reachedMilestoneIndex <= prevReachedIndexRef.current) {
+      prevReachedIndexRef.current = reachedMilestoneIndex;
+      return;
+    }
+
+    prevReachedIndexRef.current = reachedMilestoneIndex;
+    setPulseActive(true);
+    window.clearTimeout(pulseTimeoutRef.current);
+    pulseTimeoutRef.current = window.setTimeout(() => {
+      setPulseActive(false);
+    }, PULSE_MS);
+  }, [isRunning, reachedMilestoneIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+      }
+      if (pulseTimeoutRef.current) {
+        window.clearTimeout(pulseTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const stateLabel = useMemo(() => {
+    if (remainingMs <= 0) {
+      return "완료";
+    }
+    if (isRunning) {
+      return "진행 중";
+    }
+    if (remainingMs < totalDurationMs) {
+      return "일시정지";
+    }
+    return "";
+  }, [isRunning, remainingMs, totalDurationMs]);
+
+  const metaLabel = useMemo(() => {
+    const base = `총 ${formatDuration(totalDurationSeconds)}`;
+    if (remainingMs <= 0) {
+      return `${base} · 완료`;
+    }
+    if (nextMilestone) {
+      return `${base} · 다음 ${nextMilestone.label}`;
+    }
+    if (currentMilestone) {
+      return `${base} · ${currentMilestone.label}`;
+    }
+    return base;
+  }, [currentMilestone, nextMilestone, remainingMs, totalDurationSeconds]);
+
+  function handleToggleTimer() {
+    if (isRunning) {
+      setIsRunning(false);
+      startedAtRef.current = null;
+      return;
+    }
+
+    if (remainingMs <= 0) {
+      setRemainingMs(totalDurationMs);
+      prevReachedIndexRef.current = -1;
+    }
+
+    setIsRunning(true);
+  }
+
+  function handleReset() {
+    setIsRunning(false);
+    setRemainingMs(totalDurationMs);
+    startedAtRef.current = null;
+    prevReachedIndexRef.current = -1;
+    setPulseActive(false);
+  }
+
+  function handleApply(values) {
+    const nextSettings = formValuesToSettings(values);
+    setSettings(nextSettings);
+    form.setFieldsValue(settingsToFormValues(nextSettings));
+    setSettingsNote("설정 저장됨");
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSettings));
+    setDrawerOpen(false);
+  }
+
+  const algorithm = settings.mode === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm;
+
+  return (
+    <ConfigProvider
+      theme={{
+        algorithm,
+        token: {
+          colorPrimary: barPalette.main,
+          borderRadius: 8,
+          fontFamily: 'Inter, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif',
+        },
+      }}
+    >
+      <div className="timer-app">
+        <div
+          className="progress-layer"
+          style={{ transform: `scaleX(${Math.max(0, Math.min(1, progress))})` }}
+        />
+
+        <main className="timer-shell">
+          <section className="timer-stage" aria-label="타이머">
+            <p className={`timer-state${stateLabel ? "" : " is-empty"}`}>{stateLabel || "\u00a0"}</p>
+            <h1 className="timer-time">{formatTime(remainingMs, settings.showMilliseconds)}</h1>
+            <p className="timer-meta">{metaLabel}</p>
+            <Space size={10} wrap className="timer-actions">
+              <Button type="primary" size="large" onClick={handleToggleTimer}>
+                {isRunning ? "일시정지" : remainingMs <= 0 ? "다시 시작" : "시작"}
+              </Button>
+              <Button size="large" onClick={handleReset}>
+                리셋
+              </Button>
+            </Space>
+          </section>
+
+          {settings.milestones.length > 0 ? (
+            <section className="milestone-strip" aria-label="Milestone">
+              <div className={`milestone-spotlight${pulseActive ? " is-alert" : ""}${!currentMilestone && nextMilestone ? " is-next" : ""}`}>
+                <p className="milestone-spotlight-state">
+                  {currentMilestone ? "현재 milestone" : nextMilestone ? "다음 milestone" : ""}
+                </p>
+                <p className="milestone-spotlight-value">
+                  {currentMilestone ? currentMilestone.label : nextMilestone ? nextMilestone.label : ""}
+                </p>
+                <p className="milestone-spotlight-time">
+                  {currentMilestone
+                    ? formatMilestoneTime(currentMilestone.timeSeconds)
+                    : nextMilestone
+                      ? formatMilestoneTime(nextMilestone.timeSeconds)
+                      : ""}
+                </p>
+              </div>
+
+              <div className="milestone-track">
+                {settings.milestones.map((milestone, index) => {
+                  const isReached = index <= reachedMilestoneIndex;
+                  const isNext = index === nextMilestoneIndex;
+                  return (
+                    <span
+                      key={`${milestone.timeSeconds}-${milestone.label}`}
+                      className={`milestone-marker${isReached ? " is-reached" : ""}${isNext ? " is-next" : ""}`}
+                      style={{ left: `${(milestone.timeSeconds / totalDurationSeconds) * 100}%` }}
+                      data-label={formatMilestoneTime(milestone.timeSeconds)}
+                    />
+                  );
+                })}
+              </div>
+
+              <div className="milestone-list">
+                {settings.milestones.map((milestone, index) => {
+                  const isReached = index <= reachedMilestoneIndex;
+                  const isNext = index === nextMilestoneIndex;
+                  const isCurrent = index === reachedMilestoneIndex;
+                  return (
+                    <div
+                      key={`${milestone.timeSeconds}-${milestone.label}-chip`}
+                      className={`milestone-chip${isReached ? " is-reached" : ""}${isNext ? " is-next" : ""}${isCurrent ? " is-current" : ""}`}
+                    >
+                      <span className="milestone-chip-label">{milestone.label}</span>
+                      <span className="milestone-chip-time">{formatMilestoneTime(milestone.timeSeconds)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+        </main>
+
+        <FloatButton icon={<SettingOutlined />} type="default" onClick={() => setDrawerOpen(true)} tooltip="설정" />
+
+        <Drawer
+          title="설정"
+          placement="right"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          width={380}
+          destroyOnHidden={false}
+        >
+          <Form form={form} layout="vertical" onFinish={handleApply} initialValues={settingsToFormValues(settings)}>
+            <Form.Item label="총 시간" name="durationTime">
+              <TimePicker format="HH:mm:ss" allowClear={false} style={{ width: "100%" }} />
+            </Form.Item>
+
+            <Form.Item name="showMilliseconds" valuePropName="checked">
+              <Checkbox>ms 표시</Checkbox>
+            </Form.Item>
+
+            <Form.Item label="Bar 색상" name="barColor">
+              <ColorPicker format="hex" showText />
+            </Form.Item>
+
+            <Form.Item label="모드" name="mode">
+              <Select
+                options={[
+                  { value: "dark", label: "Dark" },
+                  { value: "light", label: "Light" },
+                ]}
+              />
+            </Form.Item>
+
+            <Form.List name="milestones">
+              {(fields, { add, remove }) => (
+                <div className="milestone-form-list">
+                  <div className="milestone-form-header">
+                    <span>Milestone</span>
+                    <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ time: secondsToDayjs(5 * 60), label: "" })}>
+                      추가
+                    </Button>
+                  </div>
+
+                  {fields.map((field) => (
+                    <div key={field.key} className="milestone-form-row">
+                      <Form.Item {...field} name={[field.name, "time"]} className="milestone-form-time">
+                        <TimePicker format="HH:mm:ss" allowClear={false} />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "label"]} className="milestone-form-label">
+                        <Input placeholder="목표 이름" />
+                      </Form.Item>
+                      <Button danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Form.List>
+
+            <Button type="primary" htmlType="submit" block size="large">
+              적용
+            </Button>
+
+            <p className="settings-note">{settingsNote}</p>
+          </Form>
+        </Drawer>
+      </div>
+    </ConfigProvider>
+  );
+}
