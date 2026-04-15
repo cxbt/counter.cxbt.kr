@@ -1,0 +1,90 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      APP_NAME: ${{ github.event.repository.name }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KEY_B64: ${{ secrets.DEPLOY_SSH_KEY_B64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${DEPLOY_HOST}"
+          test -n "${DEPLOY_USER}"
+          if [ -z "${DEPLOY_SSH_KEY:-}" ] && [ -z "${DEPLOY_SSH_KEY_B64:-}" ]; then
+            echo "Missing DEPLOY_SSH_KEY or DEPLOY_SSH_KEY_B64" >&2
+            exit 1
+          fi
+
+      - name: Prepare SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.ssh"
+          if [ -n "${DEPLOY_SSH_KEY:-}" ]; then
+            printf '%s\n' "${DEPLOY_SSH_KEY}" > "$HOME/.ssh/deploy_key"
+          else
+            printf '%s' "${DEPLOY_SSH_KEY_B64}" | base64 --decode > "$HOME/.ssh/deploy_key"
+          fi
+          chmod 600 "$HOME/.ssh/deploy_key"
+
+          PORT="${DEPLOY_PORT:-22}"
+          ssh-keyscan -p "${PORT}" "${DEPLOY_HOST}" >> "$HOME/.ssh/known_hosts"
+
+      - name: Build release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar.gz --output "$RUNNER_TEMP/${APP_NAME}.tgz" HEAD
+
+      - name: Upload release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${DEPLOY_PORT:-22}"
+          scp -i "$HOME/.ssh/deploy_key" -P "${PORT}" "$RUNNER_TEMP/${APP_NAME}.tgz" "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/${APP_NAME}.tgz"
+
+      - name: Deploy on remote host
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${DEPLOY_PORT:-22}"
+          ssh -i "$HOME/.ssh/deploy_key" -p "${PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" "APP_NAME='${APP_NAME}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          APP_DIR="$HOME/apps/$APP_NAME"
+          TMP_DIR="$HOME/apps/.$APP_NAME-deploy"
+          ARCHIVE="/tmp/$APP_NAME.tgz"
+
+          mkdir -p "$APP_DIR" "$TMP_DIR"
+          rm -rf "$TMP_DIR"/*
+          tar -xzf "$ARCHIVE" -C "$TMP_DIR"
+
+          find "$APP_DIR" -mindepth 1 -maxdepth 1 \
+            ! -name ".env" \
+            ! -name ".env.production" \
+            -exec rm -rf {} +
+
+          cp -a "$TMP_DIR"/. "$APP_DIR"/
+          rm -rf "$TMP_DIR" "$ARCHIVE"
+
+          cd "$APP_DIR"
+          docker compose up -d --build --remove-orphans
+          docker compose ps
+REMOTE

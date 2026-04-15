@@ -4,5 +4,7 @@ services:
       context: .
     container_name: timer-web
     restart: unless-stopped
+    environment:
+      APP_TITLE: ${APP_TITLE:-카운터}
     ports:
       - "127.0.0.1:8080:3000"
