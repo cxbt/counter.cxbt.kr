@@ -412,9 +412,13 @@ export default function Page() {
     };
   }, []);
 
-  const formattedTime = formatTime(remainingMs, settings.showMilliseconds);
   const isFinished = remainingMs <= 0;
-  const timeDisplay = isFinished ? "😄👍" : formattedTime;
+  const timeParts = getTimeDisplayParts(remainingMs);
+  const mainTime = timeParts.hasHours
+    ? `${timeParts.hours}:${timeParts.minutes}:${timeParts.seconds}`
+    : `${timeParts.minutes}:${timeParts.seconds}`;
+  const millisecondsText = timeParts.centiseconds;
+  const ariaTime = settings.showMilliseconds ? `${mainTime}.${millisecondsText}` : mainTime;
 
   function handleToggleTimer() {
     if (isFinished) {
@@ -465,9 +469,16 @@ export default function Page() {
             <h1
               className="timer-time"
               style={{ "--timer-scale": `${settings.timerScale / 100}` }}
-              aria-label={timeDisplay}
+              aria-label={isFinished ? "종료" : ariaTime}
             >
-              {timeDisplay}
+              {isFinished ? (
+                "😄👍"
+              ) : (
+                <>
+                  <span className="timer-time-main">{mainTime}</span>
+                  {settings.showMilliseconds ? <span className="timer-time-ms">.{millisecondsText}</span> : null}
+                </>
+              )}
             </h1>
             {milestoneTitle ? <p className="timer-state">{milestoneTitle}</p> : null}
             {settings.showMilestoneTrack ? (
