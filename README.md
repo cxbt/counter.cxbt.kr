@@ -52,9 +52,11 @@ The app runs on port `3000` by default.
 
 ```bash
 APP_TITLE=카운터
+HOST_PORT=8080
 ```
 
 If `APP_TITLE` is not set, the default title is `카운터`.
+If `HOST_PORT` is not set, Docker binds to `127.0.0.1:8080`.
 
 ## Docker
 
@@ -76,6 +78,12 @@ Example with a custom title:
 APP_TITLE=My Counter docker compose up -d --build
 ```
 
+Example with a custom localhost port:
+
+```bash
+HOST_PORT=9090 docker compose up -d --build
+```
+
 Health check:
 
 ```bash
@@ -92,6 +100,8 @@ The GitHub Actions workflow is defined in `.github/workflows/deploy.yml`.
 - `DEPLOY_USER`
 - `DEPLOY_SSH_KEY` or `DEPLOY_SSH_KEY_B64`
 - `DEPLOY_PORT` optional, defaults to `22`
+- `APP_TITLE` optional, overrides the remote title during deployment
+- `HOST_PORT` optional, defaults to `8080`
 
 ### Deployment Flow
 
@@ -100,10 +110,13 @@ The GitHub Actions workflow is defined in `.github/workflows/deploy.yml`.
 3. The app is deployed to `~/apps/<repo-name>`.
 4. The server runs `docker compose up -d --build --remove-orphans`.
 
+If `APP_TITLE` or `HOST_PORT` is set as a GitHub Actions secret, that value is applied during deployment.
+
 ### Remote Configuration
 
-To override the app title on the server, add this to either `~/apps/<repo-name>/.env` or `~/apps/<repo-name>/.env.production`:
+To override the app title or port on the server without changing GitHub secrets, add values like these to either `~/apps/<repo-name>/.env` or `~/apps/<repo-name>/.env.production`:
 
 ```bash
 APP_TITLE=Your Title
+HOST_PORT=9090
 ```
