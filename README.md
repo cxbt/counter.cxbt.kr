@@ -1,8 +1,8 @@
 # Counter
 
-A customizable countdown timer built with Next.js and Ant Design.
+A customizable countdown counter built with Next.js and Ant Design.
 
-It is designed for a large full-screen timer view with a shrinking progress bar, configurable milestones, local persistence, and Docker-based deployment behind a reverse proxy such as Caddy.
+It is designed for a large full-screen counter view with a shrinking progress bar, configurable milestones, local persistence, and Docker-based deployment behind a reverse proxy such as Caddy.
 
 ## Features
 
@@ -13,7 +13,7 @@ It is designed for a large full-screen timer view with a shrinking progress bar,
 - Optional 2-digit millisecond display
 - Light and dark mode
 - Custom bar color
-- Adjustable timer text scale
+- Adjustable counter text scale
 - Adjustable progress bar height
 - Settings saved to `localStorage`
 - App title configurable through `APP_TITLE`

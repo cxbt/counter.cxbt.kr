@@ -1,8 +1,10 @@
+name: counter
+
 services:
-  timer-web:
+  counter-web:
     build:
       context: .
-    container_name: timer-web
+    container_name: counter-web
     restart: unless-stopped
     environment:
       APP_TITLE: ${APP_TITLE:-카운터}

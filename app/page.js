@@ -26,7 +26,8 @@ import {
   SettingOutlined,
 } from "@ant-design/icons";
 
-const STORAGE_KEY = "custom-timer-settings-v2";
+const STORAGE_KEY = "custom-counter-settings-v3";
+const LEGACY_STORAGE_KEY = "custom-timer-settings-v2";
 const PULSE_MS = 2200;
 const SETTINGS_NOTE_FADE_DELAY_MS = 2200;
 const SETTINGS_NOTE_HIDE_DELAY_MS = 2800;
@@ -42,7 +43,7 @@ const DEFAULT_SETTINGS = {
   mode: "dark",
   showMilliseconds: false,
   showMilestoneTrack: true,
-  timerScale: 100,
+  counterScale: 100,
   trackHeight: 64,
 };
 
@@ -166,9 +167,9 @@ function sanitizeSettings(candidate) {
   const mode = candidate?.mode === "light" ? "light" : "dark";
   const showMilliseconds = Boolean(candidate?.showMilliseconds);
   const showMilestoneTrack = candidate?.showMilestoneTrack !== false;
-  const timerScaleNumber = Number(candidate?.timerScale);
+  const counterScaleNumber = Number(candidate?.counterScale ?? candidate?.timerScale);
   const trackHeightNumber = Number(candidate?.trackHeight);
-  const timerScale = Number.isFinite(timerScaleNumber) ? Math.round(timerScaleNumber) : DEFAULT_SETTINGS.timerScale;
+  const counterScale = Number.isFinite(counterScaleNumber) ? Math.round(counterScaleNumber) : DEFAULT_SETTINGS.counterScale;
   const trackHeight = Number.isFinite(trackHeightNumber) ? Math.round(trackHeightNumber) : DEFAULT_SETTINGS.trackHeight;
 
   const milestones = Array.isArray(candidate?.milestones)
@@ -188,7 +189,7 @@ function sanitizeSettings(candidate) {
     mode,
     showMilliseconds,
     showMilestoneTrack,
-    timerScale,
+    counterScale,
     trackHeight,
   };
 }
@@ -198,7 +199,7 @@ function settingsToFormValues(settings) {
     durationTime: secondsToDayjs(durationPartsToSeconds(settings.duration)),
     showMilliseconds: settings.showMilliseconds,
     showMilestoneTrack: settings.showMilestoneTrack,
-    timerScale: settings.timerScale,
+    counterScale: settings.counterScale,
     trackHeight: settings.trackHeight,
     barColor: settings.barColor,
     mode: settings.mode,
@@ -232,7 +233,7 @@ function formValuesToSettings(values) {
     mode: values.mode,
     showMilliseconds: values.showMilliseconds,
     showMilestoneTrack: values.showMilestoneTrack,
-    timerScale: values.timerScale,
+    counterScale: values.counterScale,
     trackHeight: values.trackHeight,
   });
 }
@@ -255,13 +256,13 @@ export default function Page() {
   const settingsNoteHideTimeoutRef = useRef(null);
   const prevReachedIndexRef = useRef(-1);
 
-  function clearSettingsNoteTimers() {
+  function clearSettingsNoteTimeouts() {
     window.clearTimeout(settingsNoteFadeTimeoutRef.current);
     window.clearTimeout(settingsNoteHideTimeoutRef.current);
   }
 
   function showSettingsNote(message) {
-    clearSettingsNoteTimers();
+    clearSettingsNoteTimeouts();
     setSettingsNote(message);
     setIsSettingsNoteVisible(true);
     setIsSettingsNoteFading(false);
@@ -312,7 +313,7 @@ export default function Page() {
     setMounted(true);
 
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY);
       const parsed = raw ? sanitizeSettings(JSON.parse(raw)) : DEFAULT_SETTINGS;
       setSettings(parsed);
       setRemainingMs(durationPartsToSeconds(parsed.duration) * 1000);
@@ -408,7 +409,7 @@ export default function Page() {
       if (pulseTimeoutRef.current) {
         window.clearTimeout(pulseTimeoutRef.current);
       }
-      clearSettingsNoteTimers();
+      clearSettingsNoteTimeouts();
     };
   }, []);
 
@@ -420,7 +421,7 @@ export default function Page() {
   const millisecondsText = timeParts.centiseconds;
   const ariaTime = settings.showMilliseconds ? `${mainTime}.${millisecondsText}` : mainTime;
 
-  function handleToggleTimer() {
+  function handleToggleCounter() {
     if (isFinished) {
       return;
     }
@@ -463,24 +464,24 @@ export default function Page() {
         },
       }}
     >
-      <div className="timer-app">
-        <main className="timer-shell">
-          <section className="timer-stage" aria-label="타이머">
+      <div className="counter-app">
+        <main className="counter-shell">
+          <section className="counter-stage" aria-label="카운터">
             <h1
-              className="timer-time"
-              style={{ "--timer-scale": `${settings.timerScale / 100}` }}
+              className="counter-time"
+              style={{ "--counter-scale": `${settings.counterScale / 100}` }}
               aria-label={isFinished ? "종료" : ariaTime}
             >
               {isFinished ? (
                 "😄👍"
               ) : (
                 <>
-                  <span className="timer-time-main">{mainTime}</span>
-                  {settings.showMilliseconds ? <span className="timer-time-ms">.{millisecondsText}</span> : null}
+                  <span className="counter-time-main">{mainTime}</span>
+                  {settings.showMilliseconds ? <span className="counter-time-ms">.{millisecondsText}</span> : null}
                 </>
               )}
             </h1>
-            {milestoneTitle ? <p className="timer-state">{milestoneTitle}</p> : null}
+            {milestoneTitle ? <p className="counter-state">{milestoneTitle}</p> : null}
             {settings.showMilestoneTrack ? (
               <div
                 className="milestone-track"
@@ -507,23 +508,23 @@ export default function Page() {
                 })}
               </div>
             ) : null}
-            <Space size={10} wrap className="timer-actions">
+            <Space size={10} wrap className="counter-actions">
               <Button
                 type="primary"
                 size="large"
                 shape="circle"
-                icon={isRunning ? <PauseOutlined className="timer-playback-icon" /> : <CaretRightFilled className="timer-playback-icon" />}
+                icon={isRunning ? <PauseOutlined className="counter-playback-icon" /> : <CaretRightFilled className="counter-playback-icon" />}
                 aria-label={isRunning ? "일시정지" : "시작"}
-                className="timer-action-button"
+                className="counter-action-button"
                 disabled={isFinished}
-                onClick={handleToggleTimer}
+                onClick={handleToggleCounter}
               />
               <Button
                 size="large"
                 shape="circle"
                 icon={<ReloadOutlined />}
                 aria-label="리셋"
-                className="timer-action-button"
+                className="counter-action-button"
                 onClick={handleReset}
               />
               <Button
@@ -531,7 +532,7 @@ export default function Page() {
                 shape="circle"
                 icon={<SettingOutlined />}
                 aria-label="설정"
-                className="timer-action-button"
+                className="counter-action-button"
                 onClick={() => setDrawerOpen(true)}
               />
             </Space>
@@ -611,7 +612,7 @@ export default function Page() {
 
             <p className="settings-section-title settings-section-title-divider">스타일 설정</p>
             <div className="settings-row settings-row-1-1">
-              <Form.Item label="타이머 글자 크기(%)" name="timerScale" className="settings-item">
+              <Form.Item label="카운터 글자 크기(%)" name="counterScale" className="settings-item">
                 <InputNumber step={5} style={{ width: "100%" }} />
               </Form.Item>
 

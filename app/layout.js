@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata() {
   return {
     title: process.env.APP_TITLE || "카운터",
-    description: "Customizable milestone timer",
+    description: "Customizable milestone counter",
   };
 }
 
