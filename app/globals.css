@@ -13,6 +13,7 @@
   --chip-done: rgba(244, 178, 94, 0.18);
   --line-strong: rgba(255, 255, 255, 0.14);
   --line-soft: rgba(255, 255, 255, 0.1);
+  --track-border: rgba(255, 255, 255, 0.24);
   --shadow: rgba(0, 0, 0, 0.3);
 }
 
@@ -26,6 +27,7 @@ body[data-mode="light"] {
   --chip-base: rgba(17, 24, 39, 0.06);
   --line-strong: rgba(17, 24, 39, 0.22);
   --line-soft: rgba(17, 24, 39, 0.16);
+  --track-border: rgba(17, 24, 39, 0.34);
   --shadow: rgba(15, 23, 42, 0.12);
 }
 
@@ -195,12 +197,15 @@ body {
 .milestone-track {
   --track-progress: 1;
   position: relative;
+  justify-self: center;
+  width: 94%;
   height: var(--track-height, 64px);
   margin-top: 22px;
   margin-bottom: 22px;
   border-radius: 8px;
   background: var(--base-bg-soft);
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  border: 1px solid var(--track-border);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   overflow: visible;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
 import {
   Button,
@@ -250,11 +250,17 @@ export default function Page() {
   const [isSettingsNoteVisible, setIsSettingsNoteVisible] = useState(false);
   const [isSettingsNoteFading, setIsSettingsNoteFading] = useState(false);
   const frameRef = useRef(null);
+  const remainingMsRef = useRef(durationPartsToSeconds(DEFAULT_SETTINGS.duration) * 1000);
   const startedAtRef = useRef(null);
   const pulseTimeoutRef = useRef(null);
   const settingsNoteFadeTimeoutRef = useRef(null);
   const settingsNoteHideTimeoutRef = useRef(null);
   const prevReachedIndexRef = useRef(-1);
+
+  const updateRemainingMs = useCallback((value) => {
+    remainingMsRef.current = value;
+    setRemainingMs(value);
+  }, []);
 
   function clearSettingsNoteTimeouts() {
     window.clearTimeout(settingsNoteFadeTimeoutRef.current);
@@ -316,11 +322,11 @@ export default function Page() {
       const raw = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY);
       const parsed = raw ? sanitizeSettings(JSON.parse(raw)) : DEFAULT_SETTINGS;
       setSettings(parsed);
-      setRemainingMs(durationPartsToSeconds(parsed.duration) * 1000);
+      updateRemainingMs(durationPartsToSeconds(parsed.duration) * 1000);
     } catch {
       showSettingsNote("저장된 설정을 읽지 못함");
     }
-  }, []);
+  }, [updateRemainingMs]);
 
   useEffect(() => {
     if (!drawerOpen) {
@@ -343,12 +349,12 @@ export default function Page() {
   }, [barPalette, mounted, settings.mode]);
 
   useEffect(() => {
-    setRemainingMs(totalDurationMs);
+    updateRemainingMs(totalDurationMs);
     setIsRunning(false);
     startedAtRef.current = null;
     prevReachedIndexRef.current = -1;
     setPulseActive(false);
-  }, [totalDurationMs]);
+  }, [totalDurationMs, updateRemainingMs]);
 
   useEffect(() => {
     if (!isRunning) {
@@ -361,12 +367,12 @@ export default function Page() {
 
     const tick = (now) => {
       if (startedAtRef.current === null) {
-        startedAtRef.current = now - (totalDurationMs - remainingMs);
+        startedAtRef.current = now - (totalDurationMs - remainingMsRef.current);
       }
 
       const elapsed = now - startedAtRef.current;
       const nextRemaining = Math.max(0, totalDurationMs - elapsed);
-      setRemainingMs(nextRemaining);
+      updateRemainingMs(nextRemaining);
 
       if (nextRemaining > 0) {
         frameRef.current = requestAnimationFrame(tick);
@@ -385,7 +391,7 @@ export default function Page() {
         frameRef.current = null;
       }
     };
-  }, [isRunning, remainingMs, totalDurationMs]);
+  }, [isRunning, totalDurationMs, updateRemainingMs]);
 
   useEffect(() => {
     if (!isRunning || reachedMilestoneIndex <= prevReachedIndexRef.current) {
@@ -437,7 +443,7 @@ export default function Page() {
 
   function handleReset() {
     setIsRunning(false);
-    setRemainingMs(totalDurationMs);
+    updateRemainingMs(totalDurationMs);
     startedAtRef.current = null;
     prevReachedIndexRef.current = -1;
     setPulseActive(false);
