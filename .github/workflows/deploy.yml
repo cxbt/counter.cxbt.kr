@@ -103,4 +103,4 @@ jobs:
           fi
           docker compose up -d --build --remove-orphans
           docker compose ps
-REMOTE
+          REMOTE
