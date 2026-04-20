@@ -23,12 +23,16 @@ import {
   PauseOutlined,
   PlusOutlined,
   ReloadOutlined,
+  ScheduleOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
 
 const STORAGE_KEY = "custom-counter-settings-v3";
 const LEGACY_STORAGE_KEY = "custom-timer-settings-v2";
 const PULSE_MS = 2200;
+const FINISH_FLASH_CYCLE_MS = 1280;
+const FINISH_FLASH_CYCLES = 3;
+const FINISH_FLASH_TOTAL_MS = FINISH_FLASH_CYCLE_MS * FINISH_FLASH_CYCLES;
 const SETTINGS_NOTE_FADE_DELAY_MS = 2200;
 const SETTINGS_NOTE_HIDE_DELAY_MS = 2800;
 
@@ -43,6 +47,7 @@ const DEFAULT_SETTINGS = {
   mode: "dark",
   showMilliseconds: false,
   showMilestoneTrack: true,
+  showFinishFlash: false,
   counterScale: 100,
   trackHeight: 64,
 };
@@ -167,6 +172,7 @@ function sanitizeSettings(candidate) {
   const mode = candidate?.mode === "light" ? "light" : "dark";
   const showMilliseconds = Boolean(candidate?.showMilliseconds);
   const showMilestoneTrack = candidate?.showMilestoneTrack !== false;
+  const showFinishFlash = Boolean(candidate?.showFinishFlash);
   const counterScaleNumber = Number(candidate?.counterScale ?? candidate?.timerScale);
   const trackHeightNumber = Number(candidate?.trackHeight);
   const counterScale = Number.isFinite(counterScaleNumber) ? Math.round(counterScaleNumber) : DEFAULT_SETTINGS.counterScale;
@@ -189,6 +195,7 @@ function sanitizeSettings(candidate) {
     mode,
     showMilliseconds,
     showMilestoneTrack,
+    showFinishFlash,
     counterScale,
     trackHeight,
   };
@@ -199,6 +206,7 @@ function settingsToFormValues(settings) {
     durationTime: secondsToDayjs(durationPartsToSeconds(settings.duration)),
     showMilliseconds: settings.showMilliseconds,
     showMilestoneTrack: settings.showMilestoneTrack,
+    showFinishFlash: settings.showFinishFlash,
     counterScale: settings.counterScale,
     trackHeight: settings.trackHeight,
     barColor: settings.barColor,
@@ -233,6 +241,7 @@ function formValuesToSettings(values) {
     mode: values.mode,
     showMilliseconds: values.showMilliseconds,
     showMilestoneTrack: values.showMilestoneTrack,
+    showFinishFlash: values.showFinishFlash,
     counterScale: values.counterScale,
     trackHeight: values.trackHeight,
   });
@@ -246,6 +255,8 @@ export default function Page() {
   const [remainingMs, setRemainingMs] = useState(durationPartsToSeconds(DEFAULT_SETTINGS.duration) * 1000);
   const [isRunning, setIsRunning] = useState(false);
   const [pulseActive, setPulseActive] = useState(false);
+  const [showFinishedLabel, setShowFinishedLabel] = useState(false);
+  const [isFinishFlashActive, setIsFinishFlashActive] = useState(false);
   const [settingsNote, setSettingsNote] = useState("");
   const [isSettingsNoteVisible, setIsSettingsNoteVisible] = useState(false);
   const [isSettingsNoteFading, setIsSettingsNoteFading] = useState(false);
@@ -253,8 +264,11 @@ export default function Page() {
   const remainingMsRef = useRef(durationPartsToSeconds(DEFAULT_SETTINGS.duration) * 1000);
   const startedAtRef = useRef(null);
   const pulseTimeoutRef = useRef(null);
+  const finishFlashTimeoutRef = useRef(null);
+  const finishLabelTimeoutRef = useRef(null);
   const settingsNoteFadeTimeoutRef = useRef(null);
   const settingsNoteHideTimeoutRef = useRef(null);
+  const finishSequenceStartedRef = useRef(false);
   const prevReachedIndexRef = useRef(-1);
 
   const updateRemainingMs = useCallback((value) => {
@@ -354,6 +368,11 @@ export default function Page() {
     startedAtRef.current = null;
     prevReachedIndexRef.current = -1;
     setPulseActive(false);
+    setShowFinishedLabel(false);
+    setIsFinishFlashActive(false);
+    finishSequenceStartedRef.current = false;
+    window.clearTimeout(finishFlashTimeoutRef.current);
+    window.clearTimeout(finishLabelTimeoutRef.current);
   }, [totalDurationMs, updateRemainingMs]);
 
   useEffect(() => {
@@ -408,6 +427,22 @@ export default function Page() {
   }, [isRunning, reachedMilestoneIndex]);
 
   useEffect(() => {
+    if (remainingMs > 0 || finishSequenceStartedRef.current) {
+      return;
+    }
+
+    finishSequenceStartedRef.current = true;
+    setShowFinishedLabel(true);
+
+    if (settings.showFinishFlash) {
+      setIsFinishFlashActive(true);
+      finishFlashTimeoutRef.current = window.setTimeout(() => {
+        setIsFinishFlashActive(false);
+      }, FINISH_FLASH_TOTAL_MS);
+    }
+  }, [remainingMs, settings.showFinishFlash]);
+
+  useEffect(() => {
     return () => {
       if (frameRef.current) {
         cancelAnimationFrame(frameRef.current);
@@ -415,6 +450,8 @@ export default function Page() {
       if (pulseTimeoutRef.current) {
         window.clearTimeout(pulseTimeoutRef.current);
       }
+      window.clearTimeout(finishFlashTimeoutRef.current);
+      window.clearTimeout(finishLabelTimeoutRef.current);
       clearSettingsNoteTimeouts();
     };
   }, []);
@@ -447,6 +484,11 @@ export default function Page() {
     startedAtRef.current = null;
     prevReachedIndexRef.current = -1;
     setPulseActive(false);
+    setShowFinishedLabel(false);
+    setIsFinishFlashActive(false);
+    finishSequenceStartedRef.current = false;
+    window.clearTimeout(finishFlashTimeoutRef.current);
+    window.clearTimeout(finishLabelTimeoutRef.current);
   }
 
   function handleApply(values) {
@@ -470,16 +512,16 @@ export default function Page() {
         },
       }}
     >
-      <div className="counter-app">
+      <div className={`counter-app${isFinishFlashActive ? " is-finish-flashing" : ""}`}>
         <main className="counter-shell">
           <section className="counter-stage" aria-label="카운터">
             <h1
               className="counter-time"
               style={{ "--counter-scale": `${settings.counterScale / 100}` }}
-              aria-label={isFinished ? "종료" : ariaTime}
+              aria-label={showFinishedLabel && isFinished ? "종료" : ariaTime}
             >
-              {isFinished ? (
-                "😄👍"
+              {showFinishedLabel && isFinished ? (
+                <ScheduleOutlined className="counter-finish-icon" aria-hidden="true" />
               ) : (
                 <>
                   <span className="counter-time-main">{mainTime}</span>
@@ -616,6 +658,10 @@ export default function Page() {
               <Checkbox>카운터 바 표시</Checkbox>
             </Form.Item>
 
+            <Form.Item name="showFinishFlash" valuePropName="checked" className="settings-item settings-item-checkbox">
+              <Checkbox>종료 시 화면 깜빡임</Checkbox>
+            </Form.Item>
+
             <p className="settings-section-title settings-section-title-divider">스타일 설정</p>
             <div className="settings-row settings-row-1-1">
               <Form.Item label="카운터 글자 크기(%)" name="counterScale" className="settings-item">
@@ -628,7 +674,7 @@ export default function Page() {
             </div>
 
             <div className="settings-row settings-row-1-2">
-              <Form.Item label="Bar 색상" name="barColor" className="settings-item">
+              <Form.Item label="테마 색상" name="barColor" className="settings-item">
                 <ColorPicker format="hex" showText />
               </Form.Item>
 
