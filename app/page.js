@@ -25,6 +25,7 @@ import {
   ReloadOutlined,
   ScheduleOutlined,
   SettingOutlined,
+  StepForwardOutlined,
 } from "@ant-design/icons";
 
 const STORAGE_KEY = "custom-counter-settings-v3";
@@ -491,6 +492,25 @@ export default function Page() {
     window.clearTimeout(finishLabelTimeoutRef.current);
   }
 
+  function handleSkipSecond() {
+    if (isFinished) {
+      return;
+    }
+
+    const nextRemaining = Math.max(0, remainingMsRef.current - 1000);
+    updateRemainingMs(nextRemaining);
+
+    if (nextRemaining <= 0) {
+      setIsRunning(false);
+      startedAtRef.current = null;
+      return;
+    }
+
+    if (isRunning) {
+      startedAtRef.current = performance.now() - (totalDurationMs - nextRemaining);
+    }
+  }
+
   function handleApply(values) {
     const nextSettings = formValuesToSettings(values);
     setSettings(nextSettings);
@@ -574,6 +594,15 @@ export default function Page() {
                 aria-label="리셋"
                 className="counter-action-button"
                 onClick={handleReset}
+              />
+              <Button
+                size="large"
+                shape="circle"
+                icon={<StepForwardOutlined />}
+                aria-label="1초 넘기기"
+                className="counter-action-button"
+                disabled={isFinished}
+                onClick={handleSkipSecond}
               />
               <Button
                 size="large"
