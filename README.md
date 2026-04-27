@@ -2,7 +2,7 @@
 
 A customizable countdown counter built with Next.js and Ant Design.
 
-It is designed for a large full-screen counter view with a shrinking progress bar, configurable milestones, local persistence, and Docker-based deployment behind a reverse proxy such as Caddy.
+It is designed for a large full-screen counter view with a shrinking progress bar, configurable milestones, local persistence, and static deployment to GitHub Pages.
 
 ## Features
 
@@ -16,14 +16,14 @@ It is designed for a large full-screen counter view with a shrinking progress ba
 - Adjustable counter text scale
 - Adjustable progress bar height
 - Settings saved to `localStorage`
-- App title configurable through `APP_TITLE`
+- App title configurable at build time through `APP_TITLE`
 
 ## Tech Stack
 
 - Next.js
 - React
 - Ant Design
-- Docker
+- GitHub Pages
 
 ## Local Development
 
@@ -46,17 +46,16 @@ npm run build
 npm run start
 ```
 
-The app runs on port `3000` by default.
+`npm run start` serves the exported `out/` directory on port `3000`.
 
 ## Environment Variables
 
 ```bash
 APP_TITLE=카운터
-HOST_PORT=8080
 ```
 
 If `APP_TITLE` is not set, the default title is `카운터`.
-If `HOST_PORT` is not set, Docker binds to `127.0.0.1:8080`.
+Because this app is statically exported, `APP_TITLE` is applied at build time.
 
 ## Docker
 
@@ -72,7 +71,7 @@ Open:
 http://127.0.0.1:8080
 ```
 
-Example with a custom title:
+Example with a custom title baked into the exported files:
 
 ```bash
 APP_TITLE=My Counter docker compose up -d --build
@@ -84,39 +83,28 @@ Example with a custom localhost port:
 HOST_PORT=9090 docker compose up -d --build
 ```
 
-Health check:
-
-```bash
-curl http://127.0.0.1:8080/api/healthz
-```
-
 ## Deployment
 
 The GitHub Actions workflow is defined in `.github/workflows/deploy.yml`.
 
-### Required GitHub Secrets
+### GitHub Pages Setup
 
-- `DEPLOY_HOST`
-- `DEPLOY_USER`
-- `DEPLOY_SSH_KEY` or `DEPLOY_SSH_KEY_B64`
-- `DEPLOY_PORT` optional, defaults to `22`
-- `APP_TITLE` optional, overrides the remote title during deployment
-- `HOST_PORT` optional, defaults to `8080`
+1. In GitHub, open `Settings > Pages`.
+2. Set `Build and deployment` to `GitHub Actions`.
+3. Push to `main`, or run the workflow manually.
 
 ### Deployment Flow
 
-1. Push to `main`, or run the workflow manually.
-2. The workflow uploads a release archive to the remote server.
-3. The app is deployed to `~/apps/<repo-name>`.
-4. The server runs `docker compose up -d --build --remove-orphans`.
+1. The workflow installs dependencies and runs `npm run build`.
+2. Next.js exports the static site into `out/`.
+3. The workflow uploads `out/` and deploys it to GitHub Pages.
+4. For project repositories, asset paths are automatically published under `/<repo-name>/`.
 
-If `APP_TITLE` or `HOST_PORT` is set as a GitHub Actions secret, that value is applied during deployment.
+### Optional Repository Variable
 
-### Remote Configuration
+If you want to customize the production build, add repository variables:
 
-To override the app title or port on the server without changing GitHub secrets, add values like these to either `~/apps/<repo-name>/.env` or `~/apps/<repo-name>/.env.production`:
+- `APP_TITLE`
+- `CUSTOM_DOMAIN`
 
-```bash
-APP_TITLE=Your Title
-HOST_PORT=9090
-```
+When `CUSTOM_DOMAIN` is set, the build omits the project-repository base path so the site works correctly at the root of your custom domain.

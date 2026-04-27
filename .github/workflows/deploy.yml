@@ -1,4 +1,4 @@
-name: Deploy
+name: Deploy to GitHub Pages
 
 on:
   push:
@@ -6,101 +6,55 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     env:
-      APP_NAME: ${{ github.event.repository.name }}
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-      DEPLOY_SSH_KEY_B64: ${{ secrets.DEPLOY_SSH_KEY_B64 }}
-      APP_TITLE: ${{ secrets.APP_TITLE }}
-      HOST_PORT: ${{ secrets.HOST_PORT }}
+      APP_TITLE: ${{ vars.APP_TITLE }}
+      CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate secrets
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "${DEPLOY_HOST}"
-          test -n "${DEPLOY_USER}"
-          if [ -z "${DEPLOY_SSH_KEY:-}" ] && [ -z "${DEPLOY_SSH_KEY_B64:-}" ]; then
-            echo "Missing DEPLOY_SSH_KEY or DEPLOY_SSH_KEY_B64" >&2
-            exit 1
-          fi
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
 
-      - name: Prepare SSH key
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.ssh"
-          if [ -n "${DEPLOY_SSH_KEY:-}" ]; then
-            printf '%s\n' "${DEPLOY_SSH_KEY}" > "$HOME/.ssh/deploy_key"
-          else
-            printf '%s' "${DEPLOY_SSH_KEY_B64}" | base64 --decode > "$HOME/.ssh/deploy_key"
-          fi
-          chmod 600 "$HOME/.ssh/deploy_key"
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
 
-          PORT="${DEPLOY_PORT:-22}"
-          ssh-keyscan -p "${PORT}" "${DEPLOY_HOST}" >> "$HOME/.ssh/known_hosts"
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build release archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          git archive --format=tar.gz --output "$RUNNER_TEMP/${APP_NAME}.tgz" HEAD
+      - name: Build static site
+        run: npm run build
 
-      - name: Upload release archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          PORT="${DEPLOY_PORT:-22}"
-          scp -i "$HOME/.ssh/deploy_key" -P "${PORT}" "$RUNNER_TEMP/${APP_NAME}.tgz" "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/${APP_NAME}.tgz"
+      - name: Disable Jekyll processing
+        run: touch out/.nojekyll
 
-      - name: Deploy on remote host
-        shell: bash
-        run: |
-          set -euo pipefail
-          PORT="${DEPLOY_PORT:-22}"
-          REMOTE_ENV="APP_NAME='${APP_NAME}'"
-          if [ -n "${APP_TITLE:-}" ]; then
-            REMOTE_ENV="${REMOTE_ENV} APP_TITLE='${APP_TITLE}'"
-          fi
-          if [ -n "${HOST_PORT:-}" ]; then
-            REMOTE_ENV="${REMOTE_ENV} HOST_PORT='${HOST_PORT}'"
-          fi
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
 
-          ssh -i "$HOME/.ssh/deploy_key" -p "${PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" "${REMOTE_ENV} bash -s" <<'REMOTE'
-          set -euo pipefail
-          APP_DIR="$HOME/apps/$APP_NAME"
-          TMP_DIR="$HOME/apps/.$APP_NAME-deploy"
-          ARCHIVE="/tmp/$APP_NAME.tgz"
-
-          mkdir -p "$APP_DIR" "$TMP_DIR"
-          rm -rf "$TMP_DIR"/*
-          tar -xzf "$ARCHIVE" -C "$TMP_DIR"
-
-          find "$APP_DIR" -mindepth 1 -maxdepth 1 \
-            ! -name ".env" \
-            ! -name ".env.production" \
-            -exec rm -rf {} +
-
-          cp -a "$TMP_DIR"/. "$APP_DIR"/
-          rm -rf "$TMP_DIR" "$ARCHIVE"
-
-          cd "$APP_DIR"
-          if [ -n "${APP_TITLE:-}" ]; then
-            export APP_TITLE
-          fi
-          if [ -n "${HOST_PORT:-}" ]; then
-            export HOST_PORT
-          fi
-          docker compose up -d --build --remove-orphans
-          docker compose ps
-          REMOTE
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

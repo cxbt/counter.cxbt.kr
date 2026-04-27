@@ -4,9 +4,9 @@ services:
   counter-web:
     build:
       context: .
+      args:
+        APP_TITLE: ${APP_TITLE:-카운터}
     container_name: counter-web
     restart: unless-stopped
-    environment:
-      APP_TITLE: ${APP_TITLE:-카운터}
     ports:
-      - "127.0.0.1:${HOST_PORT:-8080}:3000"
+      - "127.0.0.1:${HOST_PORT:-8080}:80"
