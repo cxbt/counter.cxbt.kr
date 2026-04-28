@@ -34,11 +34,32 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
+      - name: Validate domain configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+
+          if [ -n "${CUSTOM_DOMAIN:-}" ]; then
+            echo "Using custom domain: ${CUSTOM_DOMAIN}"
+            exit 0
+          fi
+
+          if printf '%s' "${REPO_NAME}" | grep -Eq '^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$'; then
+            echo "Repository name looks like a domain (${REPO_NAME}) but CUSTOM_DOMAIN is not set." >&2
+            echo "Add Settings > Secrets and variables > Actions > Variables > CUSTOM_DOMAIN before deploying." >&2
+            exit 1
+          fi
+
       - name: Install dependencies
         run: npm ci
 
       - name: Build static site
         run: npm run build
+
+      - name: Write custom domain
+        if: ${{ vars.CUSTOM_DOMAIN != '' }}
+        run: printf '%s\n' "$CUSTOM_DOMAIN" > out/CNAME
 
       - name: Disable Jekyll processing
         run: touch out/.nojekyll

@@ -97,8 +97,9 @@ The GitHub Actions workflow is defined in `.github/workflows/deploy.yml`.
 
 1. The workflow installs dependencies and runs `npm run build`.
 2. Next.js exports the static site into `out/`.
-3. The workflow uploads `out/` and deploys it to GitHub Pages.
-4. For project repositories, asset paths are automatically published under `/<repo-name>/`.
+3. If `CUSTOM_DOMAIN` is set, the workflow writes `out/CNAME`.
+4. The workflow uploads `out/` and deploys it to GitHub Pages.
+5. For project repositories without `CUSTOM_DOMAIN`, asset paths are automatically published under `/<repo-name>/`.
 
 ### Optional Repository Variable
 
@@ -108,3 +109,4 @@ If you want to customize the production build, add repository variables:
 - `CUSTOM_DOMAIN`
 
 When `CUSTOM_DOMAIN` is set, the build omits the project-repository base path so the site works correctly at the root of your custom domain.
+If the repository name itself looks like a domain, the workflow fails fast unless `CUSTOM_DOMAIN` is configured.
